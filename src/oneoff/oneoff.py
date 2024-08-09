@@ -142,7 +142,7 @@ def run(config, script, name, memory, cpu, storage):
             click.secho(f"\nCould not find a Dockerfile in {cwd}/", fg="red")
             return
         
-        build_push_run(config.region, config.accountid, config.ecrrepository, name, 'latest', dockerfile_path)
+        build_push(config.region, config.accountid, config.ecrrepository, name, 'latest', dockerfile_path)
 
 
     # script provided - build and run!
