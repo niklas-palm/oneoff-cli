@@ -37,7 +37,9 @@ def init():
 
     # Deply cloudformation stack with ECS infra
     if stack_exists():
+        wait_for_stack_creation() # catch cases where the stack is creating.
         click.echo(f"\nCloudformation stack already exists - using existing stack.")
+
     else:
         click.echo("\nDeploying necessary infrastructure. This may take a minute")
         create_stack()

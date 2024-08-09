@@ -45,10 +45,12 @@ def create_stack():
     """Create a CloudFormation stack."""
     # Get the directory of the current script
     script_dir = os.path.dirname(os.path.abspath(__file__))
-
+    print(__file__)
+    print(script_dir)
     # Construct the absolute path to the template file relative to the script's directory
-    template_file = os.path.expanduser(os.path.join(script_dir, 'cloudformation/template.yaml'))
-
+    # template_file = os.path.expanduser(os.path.join(script_dir, 'infra.yaml'))
+    template_file = os.path.expanduser(os.path.join(script_dir, 'infra.yaml'))
+    print(template_file)
     with open(template_file, 'r') as file:
         template_body = file.read()
 
@@ -72,10 +74,10 @@ def wait_for_stack_creation():
         try:
             response = cloudformation.describe_stacks(StackName=cloudformation_stack_name)
             status = response['Stacks'][0]['StackStatus']
-            click.echo(f"Waiting for deployment to finish. Current status: {status}")
 
             if status in ['CREATE_COMPLETE', 'ROLLBACK_COMPLETE', 'CREATE_FAILED']:
                 break
+            click.echo(f"Waiting for deployment to finish. Current status: {status}")
             time.sleep(5)
         except ClientError as e:
             click.secho(

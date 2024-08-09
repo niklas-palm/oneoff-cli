@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: CloudFormation stack for setting up ECS infrastructure for one-off containers
+Description: Sets up infrastructure for OneOff cli
 
 Parameters:
   VPCName:
@@ -153,38 +153,6 @@ Resources:
     Properties:
       EmptyOnDelete: True
 
-  # # ECS Task Definition
-  # MyTaskDefinition:
-  #   Type: AWS::ECS::TaskDefinition
-  #   Properties:
-  #     Family: SHOULD COME FROM PARAMETER
-  #     ExecutionRoleArn: !GetAtt MyTaskExecutionRole.Arn
-  #     TaskRoleArn: !GetAtt MyTaskRole.Arn
-  #     NetworkMode: awsvpc
-  #     ContainerDefinitions:
-  #       - Name: SHOULD COME FROM PARAMETER
-  #         Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepositoryName}:latest"
-  #         Cpu: !Ref CPU
-  #         Memory: !Ref Memory
-  #         Essential: true
-  #         LogConfiguration:
-  #           LogDriver: awslogs
-  #           Options:
-  #             awslogs-group: !Ref MyLogGroup
-  #             awslogs-region: !Ref AWS::Region
-  #             awslogs-stream-prefix: ecs
-  #     RequiresCompatibilities:
-  #       - FARGATE
-  #     Cpu: !Ref CPU
-  #     Memory: !Ref Memory
-
-  # # CloudWatch Log Group
-  # MyLogGroup:
-  #   Type: AWS::Logs::LogGroup
-  #   Properties:
-  #     LogGroupName: !Sub "/ecs/${TaskName}"
-  #     RetentionInDays: 7
-
   MyDdbTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -213,10 +181,6 @@ Outputs:
     Description: "The ECS Cluster Name"
     Value: !Ref ECSCluster
 
-  # TaskDefinition:
-  #   Description: "The ECS Task Definition Name"
-  #   Value: !Ref MyTaskDefinition
-
   ECRRepository:
     Description: "The ECR Repository Name"
     Value: !Ref ECRRepository
@@ -228,10 +192,6 @@ Outputs:
   TaskRoleArn:
     Description: "The IAM Role ARN for ECS Task"
     Value: !GetAtt MyTaskRole.Arn
-
-  # LogGroup:
-  #   Description: "The CloudWatch Log Group Name"
-  #   Value: !Ref MyLogGroup
 
   DdbTableName:
     Description: "The DynamoDB Table Name"
