@@ -44,7 +44,7 @@ def stack_exists():
 def create_stack():
     """Create a CloudFormation stack."""
     # Get the directory of the current script
-    script_dir = os.path.dirname(os.path.realpath(__file__))
+    script_dir = os.path.dirname(os.path.abspath(__file__))
 
     # Construct the absolute path to the template file relative to the script's directory
     template_file = os.path.expanduser(os.path.join(script_dir, 'cloudformation/template.yaml'))

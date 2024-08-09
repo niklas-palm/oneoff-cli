@@ -164,17 +164,13 @@ def run(config, script, name, memory, cpu, storage):
         temp_dockerfile_path = create_temp_dockerfile(requirements_path, script_path, script)
         build_push(config.region, config.accountid, config.ecrrepository, name, 'latest', temp_dockerfile_path)
 
-
-        log_group_name = get_or_create_cloudwatch_group(config.region, name)
-        task_definition_arn = create_ecs_task_definition(config.accountid, name, config.taskexecutionrolearn, config.taskrolearn, name, config.ecrrepository, cpu, memory, log_group_name, config.region)
-        run_task(config.region, config.ecscluster, task_definition_arn, config.subnet, config.securitygroup)
-
     else:
         cwd = get_current_directory()
         click.secho(f"\n{cwd}/{script} is neither a Dockerfile or valid script", fg="red")
 
-
-
+    log_group_name = get_or_create_cloudwatch_group(config.region, name)
+    task_definition_arn = create_ecs_task_definition(config.accountid, name, config.taskexecutionrolearn, config.taskrolearn, name, config.ecrrepository, cpu, memory, log_group_name, config.region)
+    run_task(config.region, config.ecscluster, task_definition_arn, config.subnet, config.securitygroup)
 
 
 
