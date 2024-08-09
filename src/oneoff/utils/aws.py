@@ -45,12 +45,9 @@ def create_stack():
     """Create a CloudFormation stack."""
     # Get the directory of the current script
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    print(__file__)
-    print(script_dir)
     # Construct the absolute path to the template file relative to the script's directory
-    # template_file = os.path.expanduser(os.path.join(script_dir, 'infra.yaml'))
+
     template_file = os.path.expanduser(os.path.join(script_dir, 'infra.yaml'))
-    print(template_file)
     with open(template_file, 'r') as file:
         template_body = file.read()
 
@@ -230,6 +227,12 @@ def create_ecs_task_definition(account_id, task_name, execution_role_arn, task_r
             requiresCompatibilities=['FARGATE'],
             cpu=str(cpu),
             memory=str(memory),
+            tags=[
+                {
+                    'key': 'project',
+                    'value': 'oneoff'
+                },
+            ],
         )
 
         return response['taskDefinition']['taskDefinitionArn']
