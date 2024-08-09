@@ -47,7 +47,7 @@ def create_stack():
     script_dir = os.path.dirname(os.path.realpath(__file__))
 
     # Construct the absolute path to the template file relative to the script's directory
-    template_file = os.path.join(script_dir, './cloudformation/template.yaml')
+    template_file = os.path.expanduser(os.path.join(script_dir, 'cloudformation/template.yaml'))
 
     with open(template_file, 'r') as file:
         template_body = file.read()
@@ -187,6 +187,10 @@ def get_or_create_cloudwatch_group(region, name):
         # Try to create the log group
         logs_client.create_log_group(logGroupName=log_group_name)
         click.echo(f"Log group '{log_group_name}' created successfully.")
+        logs_client.put_retention_policy(
+            logGroupName=log_group_name,
+            retentionInDays=7
+        )
     except logs_client.exceptions.ResourceAlreadyExistsException:
         click.echo(f"Log group '{log_group_name}' already exists.")
 
@@ -235,6 +239,9 @@ def create_ecs_task_definition(account_id, task_name, execution_role_arn, task_r
 def run_task(region, cluster_name, task_definition_name, subnet_id, security_group_id):
     """Run an ECS task using the Fargate launch type."""
     ecs_client = boto3.client('ecs', region_name=region)
+
+    click.echo(f"Starting the container")
+
     
     try:
         response = ecs_client.run_task(

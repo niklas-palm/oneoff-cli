@@ -197,3 +197,9 @@ def list(config):
     requirements_path = get_absolute_path_if_exists('requirements.txt')
     # click.secho(json.dumps(get_configuration(), indent=3), fg="cyan")
 
+
+@cli.command()
+@pass_config
+@require_cli_config
+def test(config):
+    """Lists oneoff jobs"""
