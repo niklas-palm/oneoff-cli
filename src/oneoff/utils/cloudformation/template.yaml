@@ -1,0 +1,238 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: CloudFormation stack for setting up ECS infrastructure for one-off containers
+
+Parameters:
+  VPCName:
+    Type: String
+    Default: "one-off-vpc"
+    Description: "Name of the VPC"
+  SubnetName:
+    Type: String
+    Default: "one-off-subnet"
+    Description: "Name of the subnet"
+  IGWName:
+    Type: String
+    Default: "one-off-igw"
+    Description: "Name of the internet gateway"
+  SecurityGroupName:
+    Type: String
+    Default: "one-off-sg"
+    Description: "Name of the security group"
+  CPU:
+    Type: String
+    Default: "512"
+    Description: "The number of CPU units used by the task"
+  Memory:
+    Type: String
+    Default: "1024"
+    Description: "The amount of memory (in MiB) used by the task"
+
+Resources:
+  # VPC
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.99.0.0/16
+      Tags:
+        - Key: Name
+          Value: !Ref VPCName
+
+  # Subnet
+  MySubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.99.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Ref SubnetName
+
+  # Internet Gateway
+  MyInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref IGWName
+
+  # Attach Internet Gateway to VPC
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref MyInternetGateway
+
+  # Route Table
+  MyRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${VPCName}-route-table"
+
+  # Route to Internet Gateway
+  MyRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref MyRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MyInternetGateway
+
+  # Associate Route Table with Subnet
+  RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MySubnet
+      RouteTableId: !Ref MyRouteTable
+
+  # Security Group
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ECS task
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Ref SecurityGroupName
+
+  # ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+
+  # IAM Role for ECS Task Execution
+  MyTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ecsTaskExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:GetAuthorizationToken
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # IAM Role for ECS Task with Admin Permissions
+  MyTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ecsTaskAdminPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: "*"
+                Resource: "*"
+
+  # ECR Repository
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      EmptyOnDelete: True
+
+  # # ECS Task Definition
+  # MyTaskDefinition:
+  #   Type: AWS::ECS::TaskDefinition
+  #   Properties:
+  #     Family: SHOULD COME FROM PARAMETER
+  #     ExecutionRoleArn: !GetAtt MyTaskExecutionRole.Arn
+  #     TaskRoleArn: !GetAtt MyTaskRole.Arn
+  #     NetworkMode: awsvpc
+  #     ContainerDefinitions:
+  #       - Name: SHOULD COME FROM PARAMETER
+  #         Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepositoryName}:latest"
+  #         Cpu: !Ref CPU
+  #         Memory: !Ref Memory
+  #         Essential: true
+  #         LogConfiguration:
+  #           LogDriver: awslogs
+  #           Options:
+  #             awslogs-group: !Ref MyLogGroup
+  #             awslogs-region: !Ref AWS::Region
+  #             awslogs-stream-prefix: ecs
+  #     RequiresCompatibilities:
+  #       - FARGATE
+  #     Cpu: !Ref CPU
+  #     Memory: !Ref Memory
+
+  # # CloudWatch Log Group
+  # MyLogGroup:
+  #   Type: AWS::Logs::LogGroup
+  #   Properties:
+  #     LogGroupName: !Sub "/ecs/${TaskName}"
+  #     RetentionInDays: 7
+
+  MyDdbTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: pk # Partition key
+          AttributeType: S
+        - AttributeName: sk # Sort key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
+Outputs:
+  Subnet:
+    Description: "The Subnet ID for the ECS task"
+    Value: !Ref MySubnet
+
+  SecurityGroup:
+    Description: "The Security Group ID for the ECS task"
+    Value: !Ref SecurityGroup
+
+  ECSCluster:
+    Description: "The ECS Cluster Name"
+    Value: !Ref ECSCluster
+
+  # TaskDefinition:
+  #   Description: "The ECS Task Definition Name"
+  #   Value: !Ref MyTaskDefinition
+
+  ECRRepository:
+    Description: "The ECR Repository Name"
+    Value: !Ref ECRRepository
+
+  TaskExecutionRoleArn:
+    Description: "The IAM Role ARN for ECS Task Execution"
+    Value: !GetAtt MyTaskExecutionRole.Arn
+
+  TaskRoleArn:
+    Description: "The IAM Role ARN for ECS Task"
+    Value: !GetAtt MyTaskRole.Arn
+
+  # LogGroup:
+  #   Description: "The CloudWatch Log Group Name"
+  #   Value: !Ref MyLogGroup
+
+  DdbTableName:
+    Description: "The DynamoDB Table Name"
+    Value: !Ref MyDdbTable
