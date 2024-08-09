@@ -130,6 +130,7 @@ def authenticate_docker_to_ecr(region, account_id):
 def build_and_tag_docker_image(dockerfile_path, image_name, tag):
     """Build and tag a Docker image."""
     try:
+        click.echo("Building Docker image...")
         client = docker.from_env()
         client.images.build(path=os.path.expanduser(os.path.dirname(dockerfile_path)), tag=image_name, platform='linux/amd64')
         client.images.get(image_name).tag(image_name, tag)
