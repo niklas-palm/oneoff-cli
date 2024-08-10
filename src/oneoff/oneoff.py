@@ -2,6 +2,9 @@ import click
 from oneoff.utils.cli import *
 from oneoff.utils.aws import *
 import json
+import os
+from datetime import datetime, timezone
+import time
 
 class Config(object):
     def __init__(self) -> None:
@@ -35,21 +38,17 @@ def init():
         "What AWS region do you want to use?", type=str, default="eu-west-1"
     )
 
-    # Deply cloudformation stack with ECS infra
+    # Deploy CloudFormation stack with ECS infra
     if stack_exists():
-        wait_for_stack_creation() # catch cases where the stack is creating.
-        click.echo(f"\nCloudformation stack already exists - using existing stack.")
-
+        wait_for_stack_creation()  # Catch cases where the stack is creating.
+        click.echo("\nCloudFormation stack already exists - using existing stack.")
     else:
-        click.echo("\nDeploying necessary infrastructure. This may take a minute")
+        click.echo("\nDeploying necessary infrastructure. This may take a minute.")
         create_stack()
         wait_for_stack_creation()
-        click.secho(
-            "Infrastructure deployed!",
-            fg="green",
-        )
+        click.secho("Infrastructure deployed!", fg="green")
 
-    click.echo(f"Fetching stack outputs...")
+    click.echo("Fetching stack outputs...")
 
     # Retrieve the outputs after stack creation or if it already exists
     outputs = get_stack_outputs()
@@ -65,50 +64,48 @@ def init():
         'DdbTableName'
     ]
 
-    config = {}
+    config_data = {}
 
     for key in keys_of_interest:
         if key in outputs:
             click.echo(f"{key}: {outputs[key]}")
-            config[key.lower()] = outputs[key]
+            config_data[key.lower()] = outputs[key]
         else:
             click.echo(f"{key}: Not found in outputs")
-            raise
+            raise ValueError(f"Missing expected output: {key}")
 
-    config = {"region": region, "accountid": accountid, **config}
-    store_configuration(config)
+    config_data = {"region": region, "accountid": accountid, **config_data}
+    store_configuration(config_data)
 
-    click.secho("\n oneoff will use the the following configuration: ", fg="cyan")
-    formatted_config = json.dumps(config, indent=4, sort_keys=True)
+    click.secho("\nOneOff will use the following configuration: ", fg="cyan")
+    formatted_config = json.dumps(config_data, indent=4, sort_keys=True)
     click.secho(formatted_config, fg="cyan")
-
-
-    # click.secho("\n\U0001F973 oneoff cli is now ready to be usedn", fg="green", bold=True)
 
     click.echo("\n")
     click.echo("╔═══════════════════════════════════════════╗")
-    click.echo("║  " + click.style("\U0001F973 oneoff cli is now ready to be used", fg="green", bold=True) + "    ║")
+    click.echo("║  " + click.style("\U0001F973 OneOff CLI is now ready to be used", fg="green", bold=True) + "    ║")
     click.echo("║                                           ║")
     click.echo("║ Get started:                              ║")
     click.echo("║                                           ║")
     click.echo("║ ** Run any python script in a default     ║")
     click.echo("║    container on Fargate:                  ║")
-    click.echo("║    " + click.style("oneoeff run myscript.py -n job-name", fg="cyan", bold=True) + "    ║")
+    click.echo("║    " + click.style("oneoff run myscript.py -n job-name", fg="cyan", bold=True) + "     ║")
     click.echo("║                                           ║")
     click.echo("║ ** Run a container from a Dockerfile      ║")
     click.echo("║    in the current directory on Fargate:   ║")
-    click.echo("║    " + click.style("oneoeff run . -n job-name", fg="cyan", bold=True) + "              ║")
+    click.echo("║    " + click.style("oneoff run . -n job-name", fg="cyan", bold=True) + "               ║")
     click.echo("║                                           ║")
     click.echo("║ ** List running tasks:                    ║")
-    click.echo("║    " + click.style("oneoeff ls", fg="cyan", bold=True) + "                             ║")
+    click.echo("║    " + click.style("oneoff ls", fg="cyan", bold=True) + "                              ║")
     click.echo("║                                           ║")
     click.echo("║ ** Get the logs from a job:               ║")
-    click.echo("║    " + click.style("oneoeff logs -n job-name", fg="cyan", bold=True) + "               ║")
+    click.echo("║    " + click.style("oneoff logs -n job-name", fg="cyan", bold=True) + "                ║")
     click.echo("║                                           ║")
     click.echo("║ ** See available commands:                ║")
     click.echo("║    " + click.style("oneoff --help", fg="cyan", bold=True) + "                          ║")
     click.echo("║                                           ║")
     click.echo("╚═══════════════════════════════════════════╝")
+
 
 @cli.command()
 @pass_config
@@ -117,15 +114,13 @@ def get_conf(config):
     """Prints current configuration"""
     click.secho(json.dumps(get_configuration(), indent=3), fg="cyan")
 
-# ------ TODO: 
-
 
 @cli.command()
 @pass_config
 @click.argument("script", required=True)
 @click.option("-n", "--name", required=True, help="Name of the oneoff job")
 @click.option("-m", "--memory", default=1024, help="Amount of memory in MB. Default = 1024")
-@click.option("-c", "--cpu", default=512, help="Amount of cpu units. Default = 512")
+@click.option("-c", "--cpu", default=512, help="Amount of CPU units. Default = 512")
 @click.option("-s", "--storage", default=20, help="Amount of GB ephemeral storage [20, 200]. Default = 20")
 @require_cli_config
 def run(config, script, name, memory, cpu, storage):
@@ -136,7 +131,7 @@ def run(config, script, name, memory, cpu, storage):
         click.secho("Docker is not running. Please start Docker and try again.", fg="red")
         return
 
-    # Dockerfile sould be provided - build and run!
+    # Dockerfile provided - build and run!
     if os.path.isdir(os.path.expanduser(script)) or script == 'Dockerfile':
         dockerfile_path = get_absolute_path_if_exists('Dockerfile')
         if not dockerfile_path:
@@ -146,8 +141,7 @@ def run(config, script, name, memory, cpu, storage):
         
         build_push(config.region, config.accountid, config.ecrrepository, name, 'latest', dockerfile_path)
 
-
-    # script provided - build and run!
+    # Python script provided - build and run!
     elif '.py' in script:
         script_path = get_absolute_path_if_exists(script)
         if not script_path:
@@ -159,7 +153,7 @@ def run(config, script, name, memory, cpu, storage):
 
         requirements_path = get_absolute_path_if_exists('requirements.txt')
         if not requirements_path:
-            click.echo(f"(Add a 'requirements.txt' in the same directory as your script if you need any additional packages installed)")
+            click.echo("(Add a 'requirements.txt' in the same directory as your script if you need any additional packages installed)")
         else:
             click.echo(f"Using requirements from {requirements_path}")
 
@@ -168,22 +162,40 @@ def run(config, script, name, memory, cpu, storage):
 
     else:
         cwd = get_current_directory()
-        click.secho(f"\n{cwd}/{script} is neither a Dockerfile or valid script", fg="red")
+        click.secho(f"\n{cwd}/{script} is neither a Dockerfile nor a valid script", fg="red")
+        return
 
     log_group_name = get_or_create_cloudwatch_group(config.region, name)
     task_definition_arn = create_ecs_task_definition(config.accountid, name, config.taskexecutionrolearn, config.taskrolearn, name, config.ecrrepository, cpu, memory, log_group_name, config.region)
     run_task(config.region, config.ecscluster, task_definition_arn, config.subnet, config.securitygroup, name)
 
+
 @cli.command()
 @pass_config
-@click.option("-n", "--name", help="Name of the oneoff job")
+@click.option("-n", "--name", help="Name of the oneoff job", required=True)
+@click.option("-t", "--tail", is_flag=True, help="Continuously fetch and display the latest logs")
 @require_cli_config
-def logs(config, name):
-    """Fetches the logs for the oneoff job with the specifed name"""
-    logs =  get_latest_logs(f'/ecs/{name}', limit=25)
-    for log in logs:
-        timestamp = datetime.fromtimestamp(log['timestamp'] / 1000, timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M:%S')
-        click.echo(f"{timestamp} - {log['message'].strip()}")
+def logs(config, name, tail):
+    """Fetches the logs for the oneoff job with the specified name"""
+    log_group_name = f'/ecs/{name}'
+
+    if tail:
+        click.echo(f"Tailing logs for job: {name}. Press Ctrl+C to stop.")
+        last_timestamp = None
+        while True:
+            logs = get_latest_logs(log_group_name, limit=25)
+            if logs:
+                for log in logs:
+                    timestamp = datetime.fromtimestamp(log['timestamp'] / 1000, timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M:%S')
+                    if last_timestamp is None or log['timestamp'] > last_timestamp:
+                        click.echo(f"{timestamp} - {log['message'].strip()}")
+                        last_timestamp = log['timestamp']
+            time.sleep(5)  # Sleep for 5 seconds before fetching logs again
+    else:
+        logs = get_latest_logs(log_group_name, limit=25)
+        for log in logs:
+            timestamp = datetime.fromtimestamp(log['timestamp'] / 1000, timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M:%S')
+            click.echo(f"{timestamp} - {log['message'].strip()}")
 
 @cli.command()
 @pass_config
@@ -191,11 +203,27 @@ def logs(config, name):
 def ls(config):
     """Lists oneoff jobs"""
     tasks = list_tasks_with_tag(config.ecscluster, config.region)
+
     if tasks:
-        click.secho(json.dumps(tasks, indent=3), fg="cyan")
+        # Updated header without 'Version'
+        click.secho(f"\n{'Job Name':<20}{'Status':<15}{'Created':<25}", fg="cyan")
+        click.secho(f"{'-'*20:<20}{'-'*15:<15}{'-'*25:<25}", fg="cyan")
+        for task in tasks:
+            click.secho(
+                f"{task['job_name']:<20}{task['status']:<15}{task['created']:<25}",
+                fg="white"
+            )
+    else:
+        click.secho("No oneoff jobs found.", fg="yellow")
+
 
 @cli.command()
 @pass_config
 @require_cli_config
 def test(config):
-    """Lists oneoff jobs"""
+    """Placeholder command for testing purposes"""
+    click.secho("Test command executed.", fg="green")
+
+
+if __name__ == "__main__":
+    cli()

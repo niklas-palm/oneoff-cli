@@ -8,25 +8,23 @@ CLI that helps you quickly and easily run a long-running python program or any D
 
 ## Installation
 
-In the root of the project, run
+To install the CLI tool, navigate to the root of the project directory and run:
 
 ```bash
 pip install .
 ```
 
-to install the CLI
-
 ## Setup
 
-Run
+Initialize the CLI tool by running:
 
 ```bash
 oneoff init
 ```
 
-to invoke the one-time setup. This sets up infrastructure (that doesn't incur any cost) in your account to enable quickly run containers in ECS Fargate.
+This command will set up the necessary AWS infrastructure (which incurs no cost) to enable you to quickly run containers in ECS Fargate.
 
-Run
+After initialization, you can view available commands by running:
 
 ```bash
 oneoff --help
@@ -40,22 +38,58 @@ The CLI helps you run any python script or Docker container in as a task in ECS 
 
 There are three types of invocations:
 
-1. Run a python script without any dependencies
-2. Run a python script with a custom `requirements.txt`file at the same level as the script.
-3. Run an arbitrary container using a Dockerfile.
+1. **Run a Python script without dependencies**: Executes a Python script using a default container.
+2. **Run a Python script with a custom `requirements.txt` file**: Uses a `requirements.txt` file located at the same level as the script to install additional dependencies.
+3. **Run an arbitrary container from a Dockerfile**: Builds and runs a Docker container using a Dockerfile located in the specified path.
 
 ## Usage
 
-Run a python script (with or without a `requirements.txt`):
+### Running a Python Script
+
+To run a Python script (with or without a `requirements.txt`):
 
 ```bash
 oneoff run my_scripy.py --name test-run
 ```
 
-Run an arbitrary container using a Dockerfile:
+### Running a Docker Container
+
+To run a Docker container from a Dockerfile located in the current directory:
 
 ```bash
-oneoff run path/to/Dockerfile --name test-run
+oneoff run . --name test-run
+```
+
+### Listing Running Jobs
+
+To list all running oneoff jobs:
+
+```bash
+oneoff ls
+```
+
+This command displays the job name, status, and creation time of each running job.
+
+### Fetching Logs
+
+To fetch the logs for a specific job:
+
+```bash
+oneoff logs -n job-name
+```
+
+To continuously tail the logs (real-time updates) for a job:
+
+```bash
+oneoff logs -n job-name -t
+```
+
+### Viewing Current Configuration
+
+To view the current configuration:
+
+```bash
+oneoff get_conf
 ```
 
 > [!WARNING]  
