@@ -7,6 +7,8 @@ import docker
 import subprocess
 import  base64
 import sys
+import json
+from datetime import datetime, timezone, timedelta
 
 cloudformation = boto3.client('cloudformation')
 
@@ -56,6 +58,12 @@ def create_stack():
             StackName=cloudformation_stack_name,
             TemplateBody=template_body,
             Capabilities=['CAPABILITY_IAM', 'CAPABILITY_AUTO_EXPAND'],
+            tags=[
+                {
+                    'key': 'project',
+                    'value': 'oneoff'
+                },
+            ],
         )
         return
     except ClientError as e:
@@ -241,7 +249,7 @@ def create_ecs_task_definition(account_id, task_name, execution_role_arn, task_r
         click.echo(f"Could not create ECS task definition: {e}", err=True)
         exit(1)
 
-def run_task(region, cluster_name, task_definition_name, subnet_id, security_group_id):
+def run_task(region, cluster_name, task_definition_name, subnet_id, security_group_id, name):
     """Run an ECS task using the Fargate launch type."""
     ecs_client = boto3.client('ecs', region_name=region)
 
@@ -259,7 +267,17 @@ def run_task(region, cluster_name, task_definition_name, subnet_id, security_gro
                     'securityGroups': [security_group_id],
                     'assignPublicIp': 'ENABLED'
                 }
-            }
+            },
+            tags=[
+                {
+                    'key': 'project',
+                    'value': 'oneoff'
+                },
+                {
+                    'key': 'name',
+                    'value': name
+                },
+            ],
         )
         
         # Check for failures
@@ -274,3 +292,139 @@ def run_task(region, cluster_name, task_definition_name, subnet_id, security_gro
     except Exception as e:
         click.echo(f"An unexpected error occurred when running the task: {str(e)}", err=True)
         sys.exit(1)
+
+
+def time_ago(input_time):
+    # Get the current time in UTC
+    now = datetime.now(timezone.utc)
+    
+    # Calculate the time difference between now and the input time
+    delta = now - input_time
+    
+    # Convert the difference to seconds
+    seconds = delta.total_seconds()
+
+    # Determine the appropriate unit of time to return
+    if seconds < 60:
+        return f"{int(seconds)} seconds ago"
+    elif seconds < 3600:
+        minutes = seconds // 60
+        return f"{int(minutes)} minutes ago"
+    elif seconds < 86400:
+        hours = seconds // 3600
+        return f"{int(hours)} hours ago"
+    elif seconds < 2592000:
+        days = seconds // 86400
+        return f"{int(days)} days ago"
+    elif seconds < 31536000:
+        months = seconds // 2592000
+        return f"{int(months)} months ago"
+    else:
+        years = seconds // 31536000
+        return f"{int(years)} years ago"
+
+
+def list_tasks_with_tag(cluster_name, region):
+    """
+    Lists all ECS tasks in the given cluster that have a specific tag key-value pair.
+
+    :param cluster_name: Name of the ECS cluster
+    :param region_name: AWS region where the ECS cluster is located
+    :param tag_key: Tag key to filter tasks by (default is 'project')
+    :param tag_value: Tag value to filter tasks by (default is 'oneoff')
+    :return: List of task ARNs with the specified tag
+    """
+    ecs_client = boto3.client('ecs', region_name=region)
+
+    # Get list of tasks in the cluster
+    tasks = ecs_client.list_tasks(cluster=cluster_name)
+    task_arns = tasks['taskArns']
+
+    matching_tasks = []
+
+    if not task_arns:
+        print(f"No running tasks found in cluster {cluster_name}.")
+        return matching_tasks
+
+    tasks = []
+    # Describe the tasks to get the tags
+    task_descriptions = ecs_client.describe_tasks(cluster=cluster_name, tasks=task_arns)['tasks']
+    for task in task_descriptions:
+        print(task)
+        tags = ecs_client.list_tags_for_resource(resourceArn=task['taskArn'])
+        name_value = None
+        project_value = None
+
+        for tag in tags['tags']:
+            if tag['key'] == 'name':
+                name_value = tag['value']
+            elif tag['key'] == 'project':
+                project_value = tag['value']
+        if project_value == 'oneoff' and name_value:
+            tasks.append({'job_name': name_value, 'status': task['lastStatus'], 'version': task['version'], 'created': time_ago(task['createdAt'])})
+
+    return tasks
+
+def get_latest_logs(log_group_name, log_stream_name=None, start_time=None, end_time=None, limit=10):
+    """
+    Fetches the latest logs from a specified CloudWatch Logs group.
+    
+    :param log_group_name: The name of the CloudWatch Logs group.
+    :param log_stream_name: The name of the CloudWatch Logs stream (optional).
+    :param start_time: The start time for the logs in milliseconds since epoch (optional).
+    :param end_time: The end time for the logs in milliseconds since epoch (optional).
+    :param limit: The maximum number of log events to retrieve.
+    :return: A list of log events.
+    """
+    # Create a CloudWatch Logs client
+    client = boto3.client('logs')
+    
+    # If start_time and end_time are not provided, fetch logs from the last 1 hour
+    if not start_time:
+        start_time = int((datetime.now(timezone.utc) - timedelta(hours=1)).timestamp() * 1000)
+    if not end_time:
+        end_time = int(datetime.now(timezone.utc).timestamp() * 1000)
+    
+    try:
+        # Fetch the latest log streams if no log stream name is provided
+        streams_response = client.describe_log_streams(
+            logGroupName=log_group_name,
+            orderBy='LastEventTime',
+            descending=True,
+            limit=1
+        )
+        if not streams_response['logStreams']:
+            click.echo(f"No log streams found in log group: {log_group_name}")
+            return []
+
+        latest_log_stream = streams_response['logStreams'][0]['logStreamName']
+        response = client.get_log_events(
+            logGroupName=log_group_name,
+            logStreamName=latest_log_stream,
+            # startTime=start_time,
+            # endTime=end_time,
+            limit=limit,
+            startFromHead=False  # To get the latest logs first
+        )
+        return response.get('events', [])
+    
+    except client.exceptions.ResourceNotFoundException as e:
+        click.echo(f"Log group {log_group_name} or log stream {log_stream_name} not found: {str(e)}")
+        return []
+    except Exception as e:
+        click.echo(f"An error occurred while fetching logs: {str(e)}")
+        return []
+
+# Example usage within a Click command
+@click.command()
+@click.option('--log-group-name', prompt='Log Group Name', help='The name of the CloudWatch Logs group.')
+@click.option('--log-stream-name', help='The name of the CloudWatch Logs stream (optional).')
+@click.option('--limit', default=10, help='The maximum number of log events to retrieve.')
+def fetch_logs(log_group_name, log_stream_name, limit):
+    logs = get_latest_logs(log_group_name, log_stream_name, limit=limit)
+    for log in logs:
+        timestamp = datetime.fromtimestamp(log['timestamp'] / 1000, timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+        click.echo(f"{timestamp} - {log['message'].strip()}")
+
+if __name__ == '__main__':
+    fetch_logs()

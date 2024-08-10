@@ -99,8 +99,8 @@ def init():
     click.echo("║    in the current directory on Fargate:   ║")
     click.echo("║    " + click.style("oneoeff run . -n job-name", fg="cyan", bold=True) + "              ║")
     click.echo("║                                           ║")
-    click.echo("║ ** List jobs:                             ║")
-    click.echo("║    " + click.style("oneoeff jobs", fg="cyan", bold=True) + "                           ║")
+    click.echo("║ ** List running tasks:                    ║")
+    click.echo("║    " + click.style("oneoeff ls", fg="cyan", bold=True) + "                             ║")
     click.echo("║                                           ║")
     click.echo("║ ** Get the logs from a job:               ║")
     click.echo("║    " + click.style("oneoeff logs -n job-name", fg="cyan", bold=True) + "               ║")
@@ -172,10 +172,7 @@ def run(config, script, name, memory, cpu, storage):
 
     log_group_name = get_or_create_cloudwatch_group(config.region, name)
     task_definition_arn = create_ecs_task_definition(config.accountid, name, config.taskexecutionrolearn, config.taskrolearn, name, config.ecrrepository, cpu, memory, log_group_name, config.region)
-    run_task(config.region, config.ecscluster, task_definition_arn, config.subnet, config.securitygroup)
-
-
-
+    run_task(config.region, config.ecscluster, task_definition_arn, config.subnet, config.securitygroup, name)
 
 @cli.command()
 @pass_config
@@ -183,18 +180,19 @@ def run(config, script, name, memory, cpu, storage):
 @require_cli_config
 def logs(config, name):
     """Fetches the logs for the oneoff job with the specifed name"""
-    click.secho(json.dumps(get_configuration(), indent=3), fg="cyan")
+    logs =  get_latest_logs(f'/ecs/{name}', limit=25)
+    for log in logs:
+        timestamp = datetime.fromtimestamp(log['timestamp'] / 1000, timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M:%S')
+        click.echo(f"{timestamp} - {log['message'].strip()}")
 
 @cli.command()
 @pass_config
 @require_cli_config
-def list(config):
+def ls(config):
     """Lists oneoff jobs"""
-    # print(get_absolute_paths('Dockerfile', 'requirements.txt'))
-    dockerfile_path = get_absolute_path_if_exists('Dockerfile')
-    requirements_path = get_absolute_path_if_exists('requirements.txt')
-    # click.secho(json.dumps(get_configuration(), indent=3), fg="cyan")
-
+    tasks = list_tasks_with_tag(config.ecscluster, config.region)
+    if tasks:
+        click.secho(json.dumps(tasks, indent=3), fg="cyan")
 
 @cli.command()
 @pass_config
