@@ -1,6 +1,6 @@
 # OneOff
 
-CLI that helps you quickly and easily run a long-running python program or any Docker container as a fargate task untill it completes.
+CLI that helps you quickly and easily run a long-running python program or any Docker container in a fargate task untill it completes.
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ to see available commands.
 
 ## Overview
 
-The CLI helps you run any python script or Docker container in as a task in ECS Fargate until the container or script completes and the task is terminated.
+The CLI helps you run any python script or Docker container in a task in ECS Fargate until the container or script completes and the task is terminated.
 
 There are three types of invocations:
 
