@@ -117,7 +117,5 @@ oneoff get_conf
 
 When specifying CPU and memory, the combination of values supported can be found in the [AWS docs here](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html)
 
-![Supported CPU and memory config](./assets/cpu_memory.png)
-
 > [!WARNING]  
 > The IAM role created for the task contains admin permissions for simplicity.
