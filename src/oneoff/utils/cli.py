@@ -676,4 +676,4 @@ def prune_jobs():
         os.remove(ONEOFF_CLI_JOBS_PATH)
         click.echo("All stopped jobs pruned successfully.")
     except FileNotFoundError:
-        click.echo("No stopped jobs found.")
+        click.echo("No jobs to prune.")
