@@ -84,6 +84,9 @@ To continuously tail the logs (real-time updates) for a job:
 oneoff logs -n job-name -t
 ```
 
+> [!NOTE]  
+> Logs are automatically deleted after days.
+
 ### Viewing Current Configuration
 
 To view the current configuration:
