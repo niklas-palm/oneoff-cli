@@ -87,6 +87,22 @@ oneoff logs -n job-name -t
 > [!NOTE]  
 > Logs are automatically deleted after 7 days.
 
+### Killing a running job
+
+To kill a running job:
+
+```bash
+oneoff kill name_of_job
+```
+
+### Clean up old state
+
+To remove old jobs from the `ls` output and clean up metadata:
+
+```bash
+oneoff prune
+```
+
 ### Viewing Current Configuration
 
 To view the current configuration:
