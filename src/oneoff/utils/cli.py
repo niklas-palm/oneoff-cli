@@ -208,6 +208,44 @@ def require_cli_config(func):
             )
     return wrapper
 
+def validate_account_id(func):
+    """
+    Decorator to ensure the AWS credentials belong to the expected account.
+
+    :param expected_account_id: The AWS account ID that the CLI is configured to work with.
+    :return: Wrapped function.
+    """
+
+    conf = get_configuration()
+    account_id = conf['accountid']
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            # Use STS to get the account ID of the current credentials
+            sts_client = boto3.client('sts')
+            response = sts_client.get_caller_identity()
+            current_account_id = response['Account']
+
+            if current_account_id == account_id:
+                return func(*args, **kwargs)
+            else:
+                click.secho(
+                    f"Error: Current credentials belong to account {current_account_id}, "
+                    f"but the expected account is {account_id}.",
+                    fg="red",
+                )
+                click.secho(
+                    "Run ´oneoff init´ to fetch the metadata related to this account (or to initialize the cli in this account) if this is the desired AWS account",
+                    fg="white"
+                )
+                return
+        except Exception as e:
+            click.secho(f"Error: Failed to validate AWS account. {e}", fg="red")
+            return
+    return wrapper
+
+
 
 def docker_is_running() -> bool:
     """
