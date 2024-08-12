@@ -124,6 +124,13 @@ def get_conf(config):
 @require_cli_config
 def run(config, script, name, memory, cpu, storage):
     """Builds and runs the Dockerfile in the current directory"""
+
+    try:
+        # Validate the 'name' parameter
+        validate_name(name)
+    except ValueError as e:
+        click.secho(f"Error: {e}", fg="red")
+        return
     
     # Verify Docker is running
     if not docker_is_running():
@@ -186,7 +193,7 @@ def logs(config, name, tail):
             if logs:
                 for log in logs:
                     timestamp = datetime.fromtimestamp(log['timestamp'] / 1000, timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M:%S')
-                    if last_timestamp is None or log['timestamp'] > last_timestamp:
+                    if last_timestamp is None or log['timestamp'] >= last_timestamp:
                         click.echo(f"{timestamp} - {log['message'].strip()}")
                         last_timestamp = log['timestamp']
             time.sleep(5)  # Sleep for 5 seconds before fetching logs again
@@ -208,12 +215,15 @@ def ls(config):
         click.secho(f"\n{'Job Name':<20}{'Status':<15}{'Created':<25}", fg="cyan")
         click.secho(f"{'-'*20:<20}{'-'*15:<15}{'-'*25:<25}", fg="cyan")
         for task in tasks:
+            # Format the 'created' field using the 'time_ago' function
+            created_str = time_ago(task['created']) if isinstance(task['created'], datetime) else task['created']
             click.secho(
-                f"{task['job_name']:<20}{task['status']:<15}{task['created']:<25}",
+                f"{task['name']:<20}{task['status']:<15}{created_str:<25}",
                 fg="white"
             )
     else:
         click.secho("No oneoff jobs found.", fg="yellow")
+
 
 
 @cli.command()

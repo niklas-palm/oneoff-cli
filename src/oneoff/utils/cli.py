@@ -15,12 +15,25 @@ import base64
 import sys
 import json
 from datetime import datetime, timezone, timedelta
+import re
 
 ONEOFF_CLI_CONFIG_PATH = os.path.expanduser("~/.oneoff_cli/config")
+ONEOFF_CLI_JOBS_PATH = os.path.expanduser("~/.oneoff_cli/jobs.txt")
 ONEOFF_CLI_TMP_PATH = os.path.expanduser("~/.oneoff_cli/tmp")
 CLOUDFORMATION_STACK_NAME = 'oneoff-cli'
 
 cloudformation = boto3.client('cloudformation')
+
+def validate_name(name):
+    """
+    Validate that the name is in lowercase, contains only hyphens, lowercase letters, and numbers.
+    """
+    if not name.islower():
+        raise ValueError("Name must be in lowercase.")
+    if not re.fullmatch(r'[a-z0-9\-]+', name):
+        raise ValueError("Name can only contain lowercase letters, numbers, and hyphens.")
+    return name
+
 
 
 def store_configuration(config: dict) -> None:
@@ -37,6 +50,119 @@ def store_configuration(config: dict) -> None:
     except Exception:
         click.secho("Error: Failed to store the configuration.", fg="red")
         raise
+
+def custom_json_encoder(obj):
+    """Custom JSON encoder for datetime objects."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()  # Convert datetime to ISO 8601 format string
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+def custom_json_decoder(job):
+    """Custom JSON decoder to convert strings back to datetime objects."""
+    if 'created' in job and isinstance(job['created'], str):
+        try:
+            job['created'] = datetime.fromisoformat(job['created'])
+        except ValueError:
+            click.secho("Error: Invalid datetime format in jobs file.", fg="red")
+    return job
+
+def store_jobs(jobs: list) -> None:
+    """
+    Stores the jobs, appending them to the existing jobs if any,
+    and overwriting jobs with the same 'name'.
+
+    :param jobs: List of jobs to store.
+    :return: None
+    """
+    try:
+        # Retrieve existing jobs
+        existing_jobs = get_local_jobs() or []
+        
+        # Create a dictionary from existing jobs with 'name' as the key
+        existing_jobs_dict = {job['name']: job for job in existing_jobs}
+        
+        # Update the dictionary with new jobs, overwriting if 'name' matches
+        for job in jobs:
+            existing_jobs_dict[job['name']] = job
+        
+        # Convert the dictionary back to a list
+        updated_jobs = list(existing_jobs_dict.values())
+        
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(ONEOFF_CLI_JOBS_PATH), exist_ok=True)
+        
+        # Store the updated job list using the custom encoder
+        with open(ONEOFF_CLI_JOBS_PATH, "w") as file:
+            json.dump(updated_jobs, file, indent=2, default=custom_json_encoder)
+    
+    except Exception as e:
+        click.secho(f"Error: Failed to store the jobs locally. {e}", fg="red")
+        raise
+
+
+def get_local_jobs() -> list:
+    """
+    Retrieves the jobs from the local file and converts datetime strings back to datetime objects.
+
+    :return: Jobs data as a list of dictionaries.
+    """
+    try:
+        with open(ONEOFF_CLI_JOBS_PATH, "r") as file:
+            jobs = json.load(file)
+            # Convert datetime strings back to datetime objects
+            jobs = [custom_json_decoder(job) for job in jobs]
+            return jobs
+    except FileNotFoundError:
+        return None
+    except json.JSONDecodeError:
+        click.secho("Error: Failed to read the jobs file.", fg="red")
+        return None
+    
+def merge_local_with_remote(local_jobs: list, remote_jobs: list) -> list:
+    if not remote_jobs:
+        # If remote_jobs is empty, set the status of all local jobs to 'STOPPED'
+        for job in local_jobs:
+            job['status'] = 'STOPPED'
+        # Sort the local jobs by 'created' field in reverse order and return
+        return sorted(local_jobs, key=lambda job: job['created'], reverse=True)
+    
+    # Create a dictionary from remote jobs for quick lookup by job_name
+    remote_dict = {job['name']: job for job in remote_jobs}
+    
+    # List to hold the merged jobs
+    merged_jobs = []
+    
+    # Iterate over local jobs
+    for local_job in local_jobs:
+        job_name = local_job['name']
+        if job_name in remote_dict:
+            # If job exists in remote, use the remote job's information
+            merged_jobs.append(remote_dict.pop(job_name))
+        else:
+            # If job doesn't exist in remote, set its status to 'STOPPED'
+            local_job['status'] = 'STOPPED'
+            merged_jobs.append(local_job)
+    
+    # Add remaining remote jobs that were not in local jobs
+    merged_jobs.extend(remote_dict.values())
+    
+    # Ensure that all jobs are converted to datetime before sorting
+    for job in merged_jobs:
+        if isinstance(job['created'], str):
+            try:
+                job['created'] = datetime.fromisoformat(job['created'])
+            except ValueError:
+                click.secho("Error: Invalid datetime format in jobs file.", fg="red")
+                job['created'] = datetime.min  # Set a default value to avoid breaking sorting
+        elif not isinstance(job['created'], datetime):
+            click.secho(f"Error: Unexpected type for 'created': {type(job['created'])}", fg="red")
+            job['created'] = datetime.min  # Set a default value to avoid breaking sorting
+
+    # Sort merged jobs by 'created' field in reverse order
+    merged_jobs.sort(key=lambda job: job['created'], reverse=True)
+    
+    return merged_jobs
+
 
 
 def get_configuration() -> object:
@@ -347,7 +473,7 @@ def run_task(region, cluster_name, task_definition_name, subnet_id, security_gro
     
     running_tasks = list_tasks_with_tag(cluster_name, region)
     for task in running_tasks:
-        if task['job_name'] == name:
+        if task['name'] == name:
             click.echo('Job with the same name already running - stopping it')
             ecs_client.stop_task(
                 cluster=cluster_name,
@@ -381,6 +507,9 @@ def run_task(region, cluster_name, task_definition_name, subnet_id, security_gro
             raise click.ClickException("ECS task run failed.")
         
         click.echo(f"ECS task started successfully: {response['tasks'][0]['taskArn']}")
+        task = response['tasks'][0]
+        store_jobs([{'name': name, 'status': 'PENDING', 'created': task['createdAt'], 'taskArn': task['taskArn']}])
+
     except Exception as e:
         click.secho(f"An unexpected error occurred when running the task: {str(e)}", fg="red")
         sys.exit(1)
@@ -399,15 +528,18 @@ def time_ago(input_time):
         return f"{int(seconds // 3600)} hours ago"
     else:
         return f"{int(seconds // 86400)} days ago"
+    
 def list_tasks_with_tag(cluster_name, region):
     """
-    Lists all ECS tasks in the given cluster that have a specific tag key-value pair.
+    s all ECS tasks in the given cluster that have a specific tag key-value pair.
 
     :param cluster_name: Name of the ECS cluster
     :param region: AWS region where the ECS cluster is located
-    :return: List of tasks with specified tag
+    :return:  of tasks with specified tag
     """
     ecs_client = boto3.client('ecs', region_name=region)
+
+    local_jobs = get_local_jobs()
 
     # Get the list of tasks in the cluster
     tasks_response = ecs_client.list_tasks(cluster=cluster_name)
@@ -416,8 +548,13 @@ def list_tasks_with_tag(cluster_name, region):
     matching_tasks = []
 
     if not task_arns:
-        click.echo(f"No running tasks found in cluster {cluster_name}.")
-        return matching_tasks
+        # click.echo(f"No running tasks found in cluster {cluster_name}.")
+
+        if not local_jobs:
+            return []
+        merged_tasks = merge_local_with_remote(local_jobs, [])
+
+        return merged_tasks
 
     # Describe the tasks to get their tags
     task_descriptions = ecs_client.describe_tasks(cluster=cluster_name, tasks=task_arns)['tasks']
@@ -436,13 +573,78 @@ def list_tasks_with_tag(cluster_name, region):
         
         if project_value == 'oneoff' and name_value:
             matching_tasks.append({
-                'job_name': name_value,
+                'name': name_value,
                 'status': task['lastStatus'],
-                'created': time_ago(task['createdAt']),
+                'created': task['createdAt'],  # Ensure this is in datetime format
                 'taskArn': task['taskArn']
             })
+
+    local_jobs = get_local_jobs()
+    merged_tasks = merge_local_with_remote(local_jobs, matching_tasks)
+    store_jobs(merged_tasks)
     
-    return matching_tasks
+    return merged_tasks
+
+
+# def list_tasks_with_tag(cluster_name, region):
+#     """
+#     s all ECS tasks in the given cluster that have a specific tag key-value pair.
+
+#     :param cluster_name: Name of the ECS cluster
+#     :param region: AWS region where the ECS cluster is located
+#     :return:  of tasks with specified tag
+#     """
+#     ecs_client = boto3.client('ecs', region_name=region)
+
+#     local_jobs = get_local_jobs()
+
+#     # Get the  of tasks in the cluster
+#     tasks_response = ecs_client.list_tasks(cluster=cluster_name)
+#     task_arns = tasks_response['taskArns']
+
+#     matching_tasks = []
+
+#     if not task_arns:
+#         # click.echo(f"No running tasks found in cluster {cluster_name}.")
+
+#         if not local_jobs:
+#             return []
+#         merged_tasks = merge_local_with_remote(local_jobs, {})
+
+#         return merged_tasks
+
+#     # Describe the tasks to get their tags
+#     task_descriptions = ecs_client.describe_tasks(cluster=cluster_name, tasks=task_arns)['tasks']
+    
+#     for task in task_descriptions:
+#         tags = ecs_client.list_tags_for_resource(resourceArn=task['taskArn'])['tags']
+        
+#         name_value = None
+#         project_value = None
+        
+#         for tag in tags:
+#             if tag['key'] == 'name':
+#                 name_value = tag['value']
+#             elif tag['key'] == 'project':
+#                 project_value = tag['value']
+        
+#         if project_value == 'oneoff' and name_value:
+#             matching_tasks.append({
+#                 'name': name_value,
+#                 'status': task['lastStatus'],
+#                 'created': time_ago(task['createdAt']),
+#                 'taskArn': task['taskArn']
+#             })
+
+#     print('geh')
+#     local_jobs = get_local_jobs()
+#     print(local_jobs)
+#     merged_tasks = merge_local_with_remote(local_jobs, matching_tasks)
+#     print(merged_tasks)
+
+#     store_jobs(merged_tasks)
+    
+#     return merged_tasks
 
 def get_latest_logs(log_group_name, log_stream_name=None, start_time=None, end_time=None, limit=10):
     """
@@ -453,7 +655,7 @@ def get_latest_logs(log_group_name, log_stream_name=None, start_time=None, end_t
     :param start_time: The start time for the logs in milliseconds since epoch (optional).
     :param end_time: The end time for the logs in milliseconds since epoch (optional).
     :param limit: The maximum number of log events to retrieve.
-    :return: A list of log events.
+    :return: A  of log events.
     """
     client = boto3.client('logs')
 
