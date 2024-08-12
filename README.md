@@ -85,7 +85,7 @@ oneoff logs -n job-name -t
 ```
 
 > [!NOTE]  
-> Logs are automatically deleted after days.
+> Logs are automatically deleted after 7 days.
 
 ### Viewing Current Configuration
 
