@@ -240,6 +240,13 @@ def kill(config, name_of_job_to_kill):
             return
     click.secho(f"Job with name {name_of_job_to_kill} couldn't be found", fg="red")
 
+@cli.command()
+@pass_config
+@require_cli_config
+def prune(config):
+    """Cleans up and removes old stopped jobs"""
+    click.secho(f"Pruning jobs...", fg="white")
+    prune_jobs()
 
 if __name__ == "__main__":
     cli()

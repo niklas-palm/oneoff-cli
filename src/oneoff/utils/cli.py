@@ -667,3 +667,13 @@ def kill_job(name: str, region: str, cluster: str, task_arn: str) -> None:
     except Exception as e:
         # Handle any other unexpected errors
         click.secho(f"Error: An unexpected error occurred while trying to stop task '{task_arn}': {e}", fg="red")
+
+def prune_jobs():
+    """
+    Delete all stopped ECS tasks from local state
+    """
+    try:
+        os.remove(ONEOFF_CLI_JOBS_PATH)
+        click.echo("All stopped jobs pruned successfully.")
+    except FileNotFoundError:
+        click.echo("No stopped jobs found.")
