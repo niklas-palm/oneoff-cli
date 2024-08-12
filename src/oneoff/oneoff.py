@@ -228,10 +228,17 @@ def ls(config):
 
 @cli.command()
 @pass_config
+@click.argument("name_of_job_to_kill", required=True)
 @require_cli_config
-def test(config):
-    """Placeholder command for testing purposes"""
-    click.secho("Test command executed.", fg="green")
+def kill(config, name_of_job_to_kill):
+    """Kill a running job."""
+    click.secho(f"Kllling job: {name_of_job_to_kill}.", fg="white")
+    jobs = get_local_jobs()
+    for job in jobs:
+        if job['name'] == name_of_job_to_kill:
+            kill_job(name_of_job_to_kill, config.region, config.ecscluster, job['taskArn'])
+            return
+    click.secho(f"Job with name {name_of_job_to_kill} couldn't be found", fg="red")
 
 
 if __name__ == "__main__":

@@ -586,66 +586,6 @@ def list_tasks_with_tag(cluster_name, region):
     return merged_tasks
 
 
-# def list_tasks_with_tag(cluster_name, region):
-#     """
-#     s all ECS tasks in the given cluster that have a specific tag key-value pair.
-
-#     :param cluster_name: Name of the ECS cluster
-#     :param region: AWS region where the ECS cluster is located
-#     :return:  of tasks with specified tag
-#     """
-#     ecs_client = boto3.client('ecs', region_name=region)
-
-#     local_jobs = get_local_jobs()
-
-#     # Get the  of tasks in the cluster
-#     tasks_response = ecs_client.list_tasks(cluster=cluster_name)
-#     task_arns = tasks_response['taskArns']
-
-#     matching_tasks = []
-
-#     if not task_arns:
-#         # click.echo(f"No running tasks found in cluster {cluster_name}.")
-
-#         if not local_jobs:
-#             return []
-#         merged_tasks = merge_local_with_remote(local_jobs, {})
-
-#         return merged_tasks
-
-#     # Describe the tasks to get their tags
-#     task_descriptions = ecs_client.describe_tasks(cluster=cluster_name, tasks=task_arns)['tasks']
-    
-#     for task in task_descriptions:
-#         tags = ecs_client.list_tags_for_resource(resourceArn=task['taskArn'])['tags']
-        
-#         name_value = None
-#         project_value = None
-        
-#         for tag in tags:
-#             if tag['key'] == 'name':
-#                 name_value = tag['value']
-#             elif tag['key'] == 'project':
-#                 project_value = tag['value']
-        
-#         if project_value == 'oneoff' and name_value:
-#             matching_tasks.append({
-#                 'name': name_value,
-#                 'status': task['lastStatus'],
-#                 'created': time_ago(task['createdAt']),
-#                 'taskArn': task['taskArn']
-#             })
-
-#     print('geh')
-#     local_jobs = get_local_jobs()
-#     print(local_jobs)
-#     merged_tasks = merge_local_with_remote(local_jobs, matching_tasks)
-#     print(merged_tasks)
-
-#     store_jobs(merged_tasks)
-    
-#     return merged_tasks
-
 def get_latest_logs(log_group_name, log_stream_name=None, start_time=None, end_time=None, limit=10):
     """
     Fetches the latest logs from a specified CloudWatch Logs group.
@@ -693,3 +633,37 @@ def get_latest_logs(log_group_name, log_stream_name=None, start_time=None, end_t
     except Exception as e:
         click.echo(f"An error occurred while fetching logs: {str(e)}")
         return []
+
+def kill_job(name: str, region: str, cluster: str, task_arn: str) -> None:
+    """
+    Given a job name and task ARN, kill the associated ECS task.
+
+    :param name: Name of the ECS task to stop.
+    :param region: AWS region where the ECS cluster is located.
+    :param cluster: ECS cluster name where the task is running.
+    :param task_arn: The ARN of the ECS task to stop.
+    """
+    ecs_client = boto3.client('ecs', region_name=region)
+
+    try:
+        # Attempt to stop the ECS task
+        ecs_client.stop_task(
+            cluster=cluster,
+            task=task_arn,
+            reason=f"Manually stopping task '{name}' via oneoff CLI"
+        )
+
+        click.secho(f"Task '{name}' has seized to exist.", fg="white")
+        
+    except ClientError as e:
+        # Handle specific errors from AWS SDK
+        error_code = e.response['Error']['Code']
+        if error_code == 'ResourceNotFoundException':
+            click.secho(f"Error: Task with ARN '{task_arn}' does not exist.", fg="red")
+        elif error_code == 'InvalidParameterException':
+            click.secho(f"Error: Invalid parameters provided for task ARN '{task_arn}'.", fg="red")
+        else:
+            click.secho(f"Error: AWS SDK error occurred: {e}", fg="red")
+    except Exception as e:
+        # Handle any other unexpected errors
+        click.secho(f"Error: An unexpected error occurred while trying to stop task '{task_arn}': {e}", fg="red")
