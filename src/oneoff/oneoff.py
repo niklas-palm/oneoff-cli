@@ -1,6 +1,5 @@
 import click
 from oneoff.utils.cli import *
-from oneoff.utils.aws import *
 import json
 import os
 from datetime import datetime, timezone
