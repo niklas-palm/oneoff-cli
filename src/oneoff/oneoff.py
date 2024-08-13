@@ -122,7 +122,7 @@ def get_conf(config):
 @click.option("-c", "--cpu", default=512, help="Amount of CPU units. Default = 512")
 @click.option("-s", "--storage", default=20, help="Amount of GB ephemeral storage [20, 200]. Default = 20")
 @require_cli_config
-# @validate_account_id
+@validate_account_id
 def run(config, script, name, memory, cpu, storage):
     """Builds and runs the Dockerfile in the current directory"""
 
