@@ -215,12 +215,10 @@ def validate_account_id(func):
     :param expected_account_id: The AWS account ID that the CLI is configured to work with.
     :return: Wrapped function.
     """
-
-    conf = get_configuration()
-    account_id = conf['accountid']
-
     @wraps(func)
     def wrapper(*args, **kwargs):
+        conf = get_configuration()
+        account_id = conf['accountid']
         try:
             # Use STS to get the account ID of the current credentials
             sts_client = boto3.client('sts')
