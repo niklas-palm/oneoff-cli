@@ -157,7 +157,7 @@ def get_conf(config):
 @click.argument("script", required=True)
 @click.option("-n", "--name", required=True, help="Name of the oneoff job")
 @click.option(
-    "-m", "--memory", default=2048, help="Amount of memory in MB. Default = 1024"
+    "-m", "--memory", default=2048, help="Amount of memory in MB. Default = 2048"
 )
 @click.option("-c", "--cpu", default=1024, help="Amount of CPU units. Default = 512")
 @click.option(

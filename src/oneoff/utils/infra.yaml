@@ -19,14 +19,6 @@ Parameters:
     Type: String
     Default: "one-off-sg"
     Description: "Name of the security group"
-  CPU:
-    Type: String
-    Default: "512"
-    Description: "The number of CPU units used by the task"
-  Memory:
-    Type: String
-    Default: "1024"
-    Description: "The amount of memory (in MiB) used by the task"
 
 Resources:
   # VPC
